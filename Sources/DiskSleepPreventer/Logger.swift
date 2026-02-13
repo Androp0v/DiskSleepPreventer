@@ -5,29 +5,80 @@
 //  Created by Raúl Montón Pinillos on 16/11/25.
 //
 
+import ArgumentParser
 import Darwin
 import Foundation
+import os
 
-struct Logger {
-    static func info(_ message: String) {
-        print(message)
-    }
+enum LoggerBackend {
+    case os(Logger)
+    case terminal
+}
 
-    static func warning(_ message: String) {
-        if hasANSISupport {
-            print("\u{001B}[33m\(message)\u{001B}[0m")
-        } else {
-            print(message)
+struct SharedLogger: Sendable, ExpressibleByArgument {
+
+    let backend: LoggerBackend?
+
+    // MARK: - Init
+
+    init?(argument: String) {
+        switch argument {
+        case "os":
+            self.backend = .os(Logger(
+                subsystem: "DiskSleepPreventer",
+                category: ""
+            ))
+        case "terminal":
+            self.backend = .terminal
+        default:
+            return nil
         }
     }
 
-    static func error(_ message: String) {
-        if hasANSISupport {
-            print("\u{001B}[31m\(message)\u{001B}[0m")
-        } else {
+    // MARK: - Logging
+
+    func info(_ message: String) {
+        switch backend {
+        case .os(let logger):
+            logger.info("\(message)")
+        case .terminal:
             print(message)
+        case .none:
+            break
         }
     }
+
+    func warning(_ message: String) {
+        switch backend {
+        case .os(let logger):
+            logger.warning("\(message)")
+        case .terminal:
+            if Self.hasANSISupport {
+                print("\u{001B}[33m\(message)\u{001B}[0m")
+            } else {
+                print(message)
+            }
+        case .none:
+            break
+        }
+    }
+
+    func error(_ message: String) {
+        switch backend {
+        case .os(let logger):
+            logger.error("\(message)")
+        case .terminal:
+            if Self.hasANSISupport {
+                print("\u{001B}[31m\(message)\u{001B}[0m")
+            } else {
+                print(message)
+            }
+        case .none:
+            break
+        }
+    }
+
+    // MARK: - Utilities
 
     static var hasANSISupport: Bool {
         let rawEnvironment = getenv("TERM")

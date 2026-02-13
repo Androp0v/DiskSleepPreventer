@@ -9,10 +9,12 @@ struct Volume: Codable, Sendable {
 
 @main
 struct DiskSleepPreventer: AsyncParsableCommand {
-    @Option(help: "The volume names of the disks to keep awake")
+    @Option(help: "The volume names of the disks to keep awake.")
     var disks: [String]
     @Option(help: "The frequency at which the disks should be queried, in seconds.")
     var seconds: Double = 20
+    @Option(help: "The logging system to use. Options: os, terminal.")
+    var logger: SharedLogger
     @Flag
     var verbose = false
 
@@ -21,7 +23,7 @@ struct DiskSleepPreventer: AsyncParsableCommand {
     static let markerFileContentSize = 10
 
     func run() async throws {
-        Logger.info(StatusMessage.startupMessage(
+        logger.info(StatusMessage.startupMessage(
             seconds: seconds,
             disks: disks)
         )
@@ -32,17 +34,17 @@ struct DiskSleepPreventer: AsyncParsableCommand {
                 break
             }
             if verbose {
-                Logger.info(StatusMessage.keepingAwake(disks: keepAwakeVolumes))
+                logger.info(StatusMessage.keepingAwake(disks: keepAwakeVolumes))
             }
             for volume in keepAwakeVolumes {
                 pokeDisk(at: volume.url)
             }
             if verbose {
-                Logger.info(StatusMessage.sleeping(for: seconds))
+                logger.info(StatusMessage.sleeping(for: seconds))
             }
             try await Task.sleep(for: .seconds(seconds))
         }
-        Logger.warning("No disks to keep awake!")
+        logger.warning("No disks to keep awake!")
     }
 
     func updatedKeepAwakeVolumes() -> [Volume] {
@@ -56,7 +58,7 @@ struct DiskSleepPreventer: AsyncParsableCommand {
             do {
                 let resourceValues = try volumeURL.resourceValues(forKeys: [.nameKey])
                 guard let name = resourceValues.name else {
-                    Logger.warning("Mounted volume with unknown name at \(volumeURL.path)")
+                    logger.warning("Mounted volume with unknown name at \(volumeURL.path)")
                     return nil
                 }
                 guard disks.contains(name) else {
@@ -64,7 +66,7 @@ struct DiskSleepPreventer: AsyncParsableCommand {
                 }
                 return Volume(name: name, url: volumeURL)
             } catch {
-                Logger.warning("Failed to read resource values for \(volumeURL): \(error)")
+                logger.warning("Failed to read resource values for \(volumeURL): \(error)")
                 return nil
             }
         }
@@ -76,25 +78,25 @@ struct DiskSleepPreventer: AsyncParsableCommand {
             let readTime = try ContinuousClock().measure {
                 let contents = try readWithNoCache(at: markerFile)
                 guard contents == Self.markerFileContent else {
-                    Logger.error("Unexpected contents in \(Self.markerFilename) file")
+                    logger.error("Unexpected contents in \(Self.markerFilename) file")
                     return
                 }
             }
             if verbose, readTime.components.seconds < 1 {
-                Logger.info("Read took \(readTime)")
+                logger.info("Read took \(readTime)")
             } else if verbose {
-                Logger.warning("Read took \(readTime)")
+                logger.warning("Read took \(readTime)")
             }
         } catch ReadError.noSuchFile {
             do {
-                Logger.info("Marker file not found on disk mounted at \(url), writing marker file...")
+                logger.info("Marker file not found on disk mounted at \(url), writing marker file...")
                 try writeMarkerFile(at: markerFile)
-                Logger.info("Marker file written successfully at \(markerFile)")
+                logger.info("Marker file written successfully at \(markerFile)")
             } catch {
-                Logger.error("Failed to write marker file at \(markerFile): \(error)")
+                logger.error("Failed to write marker file at \(markerFile): \(error)")
             }
         } catch {
-            Logger.error("Failed to read contents of \(markerFile): \(error)")
+            logger.error("Failed to read contents of \(markerFile): \(error)")
         }
     }
 
